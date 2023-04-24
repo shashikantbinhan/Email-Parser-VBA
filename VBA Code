@@ -1,0 +1,204 @@
+Option Explicit
+Const xlUp As Long = -4162 'Set the enumeration for Excel's xlup
+Private WithEvents inboxItems As Outlook.Items
+Private WithEvents sentItems As Outlook.Items
+
+Private Sub Application_Startup()
+  Dim outlookApp As Outlook.Application
+  Dim objectNS As Outlook.NameSpace
+  Set outlookApp = Outlook.Application
+  Set objectNS = outlookApp.GetNamespace("MAPI")
+  Set inboxItems = objectNS.GetDefaultFolder(olFolderInbox).Folders("Sub folder Name").Items
+  Set sentItems = objectNS.GetDefaultFolder(olFolderSentMail).Items 
+End Sub
+
+Private Sub inboxItems_ItemAdd(ByVal Item As Object)
+
+Dim Msg As Outlook.MailItem
+Dim ExApp As Object
+Dim ExWb As Object
+Dim Attach As Attachment
+Dim AttachFolder As String
+Dim FileName As String
+Dim EmailRow As Long
+Dim EmailText As String
+Dim AttachRow As Long
+Dim AttachNum As Long
+Dim FileNumb As Long
+Dim ErrNumb As Long
+Dim WkBkOpen As Boolean
+
+
+If TypeName(Item) = "MailItem" Then
+    Set Msg = Item
+    FileName = "C:\Users\Folder\Folder\EMAIL_MANAGER.xlsm" 'Customize this to your workbook location
+    If FileName = "" Then
+        MsgBox "Please add a full file name for your Excel application"
+        Exit Sub
+    End If
+    
+    
+    'Determine If Excel File is open or not
+    On Error Resume Next
+    FileNumb = FreeFile() 'Get Free File #
+    Open FileName For Input Lock Read As #FileNumb ' Attempt to open the file and lock it.
+    Close FileNumb 'Close the file.
+    ErrNumb = Err 'Save the error number that occurred.
+    On Error GoTo 0 'Turn error checking back on.
+
+
+    Select Case ErrNumb 'Check to see which error occurred
+    Case 0 ' File is NOT already open by another user.
+        WkBkOpen = False 'Error number for "Permission Denied
+    Case 70 'File is already opened by another user.
+        WkBkOpen = True
+    Case Else ' Another error occurred.
+        Error ErrNumb
+    End Select
+
+
+'Start Excel Application
+On Error Resume Next
+Set ExApp = GetObject(, "Excel.Application") 'Set EXCEL application object
+On Error GoTo 0
+If ExApp Is Nothing Then
+Set ExApp = CreateObject("Excel.Application") 'Open Excel
+End If
+ExApp.Visible = True 'Make Excel Application Visible
+
+If WkBkOpen = True Then 'Check If workbook is open
+    Set ExWb = GetObject(FileName).Application
+Else:
+    Set ExWb = ExApp.Workbooks.Open(FileName)
+End If
+
+AttachFolder = ExWb.Sheets("Email Manager").Range("AttachFolder").Value 'Attachments folder
+EmailRow = ExWb.Sheets("Inbox").Range("A9999").End(xlUp).Row + 1 'First Available Row in Workbook
+EmailText = Item.Body
+If ExWb.Sheets("Email Manager").Range("Z8") = True Then 'Remove HTML Code
+    Dim StartChar As Long
+    Dim EndChar As Long
+    Do While InStr(EmailText, "<") <> 0
+        StartChar = InStr(EmailText, "<") - 1
+        EndChar = InStr(EmailText, ">") + 1
+        On Error GoTo ReplaceDone
+        EmailText = Replace(EmailText, Mid(EmailText, StartChar, EndChar - StartChar), "")
+        Loop
+ReplaceDone:
+End If
+
+With ExWb.Sheets("Inbox") 'Email Sheet
+    .Range("A" & EmailRow).Value = Item.ReceivedTime 'Email Received On
+    .Range("B" & EmailRow).Value = Item.SenderEmailAddress 'From Email
+    .Range("C" & EmailRow).Value = Item.SenderName 'From Name
+    .Range("D" & EmailRow).Value = Item.Subject 'Subject
+    .Range("E" & EmailRow).Value = EmailText 'Message
+    .Range("F" & EmailRow).Value = Item.Importance 'Set Importance
+    .Range("H" & EmailRow).Value = "=Row()" 'Row
+
+End With
+
+
+'Add Attachments (if any)
+If Item.Attachments.Count > 0 Then
+    'Check For Senders Name Attachments Folder and add if needed
+    If Dir(AttachFolder & "\" & Item.SenderName, vbDirectory) = "" Then 'If attach folder does not exist, Create Folder
+        MkDir AttachFolder & "\" & Item.SenderName  'Add Folder if needed
+    End If
+    
+    With ExWb.Sheets("Attachments") 'Attachments Sheet
+        AttachRow = ExWb.Sheets("Attachments").Range("A9999").End(xlUp).Row + 1 'First Available Row in Attachments
+        For Each Attach In Item.Attachments
+        Attach.SaveAsFile AttachFolder & "\" & Item.SenderName & "\" & Attach.FileName
+            .Range("A" & AttachRow).Value = Item.SenderEmailAddress 'Email address
+            .Range("B" & AttachRow).Value = Item.SenderName 'Name of Sender
+            .Range("C" & AttachRow).Value = Item.ReceivedTime
+            .Range("D" & AttachRow).Value = Attach.FileName
+            .Range("E" & AttachRow).Value = Right(Attach.FileName, Len(Attach.FileName) - InStrRev(Attach.FileName, ".")) 'Get File Extension /Type
+            .Range("F" & AttachRow).Value = AttachFolder & "\" & Item.SenderName & "\" & Attach.FileName 'Full File Path
+            AttachRow = AttachRow + 1
+        Next Attach
+    End With
+    
+End If
+  
+    ExWb.Sheets("Inbox").Range("G" & EmailRow).Value = Item.Attachments.Count 'Add In Attachments Count
+    ExWb.Sheets("Inbox").Range("A" & EmailRow & ":H" & EmailRow).WrapText = False 'Wrap Text
+    
+
+End If
+End Sub
+
+Private Sub sentItems_ItemAdd(ByVal Item As Object)
+
+Dim Msg As Outlook.MailItem
+Dim ExApp As Object
+Dim ExWb As Object
+Dim FileName As String
+Dim EmailRow As Long
+Dim FileNumb As Long
+Dim ErrNumb As Long
+Dim WkBkOpen As Boolean
+
+
+If TypeName(Item) = "MailItem" Then
+    FileName = "C:\Users\Folder\Folder\EMAIL_MANAGER.xlsm" 'Customize this to your workbook location
+    If FileName = "" Then
+        MsgBox "Please add a full file name for your Excel application"
+        Exit Sub
+    End If
+    
+    'Determine If Excel File is open or not
+    On Error Resume Next
+    FileNumb = FreeFile() 'Get Free File #
+    Open FileName For Input Lock Read As #FileNumb ' Attempt to open the file and lock it.
+    Close FileNumb 'Close the file.
+    ErrNumb = Err 'Save the error number that occurred.
+    On Error GoTo 0 'Turn error checking back on.
+
+
+    Select Case ErrNumb 'Check to see which error occurred
+    Case 0 ' File is NOT already open by another user.
+        WkBkOpen = False 'Error number for "Permission Denied
+    Case 70 'File is already opened by another user.
+        WkBkOpen = True
+    Case Else ' Another error occurred.
+        Error ErrNumb
+    End Select
+
+'Start Excel Application
+On Error Resume Next
+Set ExApp = GetObject(, "Excel.Application") 'Set EXCEL application object
+On Error GoTo 0
+If ExApp Is Nothing Then
+Set ExApp = CreateObject("Excel.Application") 'Open Excel
+End If
+ExApp.Visible = True 'Make Excel Application Visible
+
+If WkBkOpen = True Then 'Check If workbook is open
+    Set ExWb = GetObject(FileName).Application
+Else:
+    Set ExWb = ExApp.Workbooks.Open(FileName)
+End If
+
+
+EmailRow = ExWb.Sheets("Sent Items").Range("A9999").End(xlUp).Row + 1 'First Available Row in Workbook
+
+With ExWb.Sheets("Sent Items") 'Email Sheet
+    .Range("A" & EmailRow).Value = Item.SentOn 'Sent on Date/time
+    .Range("B" & EmailRow).Value = Item.To 'Customer ID
+    .Range("C" & EmailRow).Value = Item.SenderName 'From Name
+    .Range("D" & EmailRow).Value = Item.Subject 'Subject
+    .Range("E" & EmailRow).Value = Item.Body 'Message
+    .Range("F" & EmailRow).Value = Item.Importance 'Set Importance
+    .Range("H" & EmailRow).Value = "=Row()" 'Row
+        
+End With
+
+ExWb.Sheets("Sent Items").Range("A" & EmailRow & ":H" & EmailRow).WrapText = False 'Wrap Text
+    
+    If WkBkOpen = False Then ExWb.Close (True) 'Save & Close Workbook if Prviously closed
+    If WkBkOpen = False Then ExApp.Quit 'Quit Excel Application ir previously closed
+
+End If
+End Sub
